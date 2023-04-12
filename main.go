@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -34,32 +35,13 @@ func main() {
 
 	// kill pod which be injected daprd sidecar failed
 	for i, pod := range pods.Items {
-		for anno := range pod.Annotations {
-			if anno == "dapr.io/enabled" {
-				name := pod.GetName()
-				fmt.Printf("[%d] %s should have daprd sidecar\n", i, name)
-				containers := pod.Spec.Containers
-				found := false
-				for _, container := range containers {
-					if container.Name == "daprd" {
-						found = true
-						break
-					}
-				}
-				if !found {
-					fmt.Printf("-- [%d] %s injected daprd sidecar failed, will be killed\n", i, name)
-					// kill the pod
-					deleteOptions := metav1.DeleteOptions{
-						GracePeriodSeconds: pointer.Int64(30),
-						PropagationPolicy:  &[]metav1.DeletionPropagation{metav1.DeletePropagationBackground}[0],
-					}
-					err = clientset.CoreV1().Pods(ns).Delete(context.Background(), name, deleteOptions)
-					if err == nil {
-						fmt.Printf("---- [%d] %s killed\n", i, name)
-					} else {
-						log.Fatalf("---- [%d] %s failed to kill: %s\n", i, name, err)
-					}
-				}
+		daprEnabled := isPodDaprEnabled(&pod)
+		if daprEnabled {
+			name := pod.GetName()
+			fmt.Printf("[%d] %s should have daprd sidecar\n", i, name)
+			found := isFoundDardSidecar(&pod)
+			if !found {
+				deleteFailedPod(i, name, clientset, ns)
 			}
 		}
 	}
@@ -67,11 +49,43 @@ func main() {
 	fmt.Println("proccessed!")
 }
 
+func deleteFailedPod(i int, name string, clientset *kubernetes.Clientset, ns string) {
+	fmt.Printf("-- [%d] %s injected daprd sidecar failed, will be killed\n", i, name)
+
+	deleteOptions := metav1.DeleteOptions{
+		GracePeriodSeconds: pointer.Int64(30),
+		PropagationPolicy:  &[]metav1.DeletionPropagation{metav1.DeletePropagationBackground}[0],
+	}
+	err := clientset.CoreV1().Pods(ns).Delete(context.Background(), name, deleteOptions)
+	if err == nil {
+		fmt.Printf("---- [%d] %s killed\n", i, name)
+	} else {
+		log.Fatalf("---- [%d] %s failed to kill: %s\n", i, name, err)
+	}
+}
+
+func isFoundDardSidecar(pod *v1.Pod) bool {
+	for _, container := range pod.Spec.Containers {
+		if container.Name == "daprd" {
+			return true
+		}
+	}
+	return false
+}
+
+func isPodDaprEnabled(pod *v1.Pod) bool {
+	for anno := range pod.Annotations {
+		if anno == "dapr.io/enabled" {
+			return true
+		}
+	}
+	return false
+}
+
 // getK8sConfig returns a kubernetes config from InCluster or config file
 func getK8sConfig() *rest.Config {
 	config, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
-
 		kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
 		log.Println("Using kubeconfig file: ", kubeconfig)
 
