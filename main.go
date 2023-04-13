@@ -18,7 +18,9 @@ import (
 
 func main() {
 	var ns string
-	flag.StringVar(&ns, "namespace", "default", "namespace")
+	flag.StringVar(&ns, "ns", "default", "namespace")
+	flag.Parse()
+	log.Printf("start to check daprd sidecar injected failed pods for namespace [%s]...\n", ns)
 
 	config := getK8sConfig()
 
@@ -39,8 +41,8 @@ func main() {
 		if daprEnabled {
 			name := pod.GetName()
 			fmt.Printf("[%d] %s should have daprd sidecar\n", i, name)
-			found := isFoundDardSidecar(&pod)
-			if !found {
+			daprFound := isDardSidecarFound(&pod)
+			if !daprFound {
 				deleteFailedPod(i, name, clientset, ns)
 			}
 		}
@@ -64,7 +66,7 @@ func deleteFailedPod(i int, name string, clientset *kubernetes.Clientset, ns str
 	}
 }
 
-func isFoundDardSidecar(pod *v1.Pod) bool {
+func isDardSidecarFound(pod *v1.Pod) bool {
 	for _, container := range pod.Spec.Containers {
 		if container.Name == "daprd" {
 			return true

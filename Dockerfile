@@ -10,5 +10,8 @@ RUN go build -o /go/bin/app -v ./...
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates
 COPY --from=builder /go/bin/app /app
-ENTRYPOINT /app
+ENV NAMESPACE default
+RUN echo "namespace: $NAMESPACE"
+ENTRYPOINT /app -ns=$NAMESPACE
 LABEL Name=dapr-fix-failed-injection Version=0.0.1
+LABEL org.opencontainers.image.source="https://github.com/heavenwing/dapr-fix-failed-injection"
